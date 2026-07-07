@@ -55,6 +55,156 @@
     <script>
       var parcelRequire;
     </script>
+    <!-- OAK-D 相机接入:在 app 主逻辑执行前拦截 getUserMedia,
+         把视频输入替换成本地反代过来的 OAK MJPEG 画面。
+         纯音频请求(通话功能用麦克风)原样透传给真实实现。
+         详见 offline/QUICKSTART.md "使用 OAK-D 相机作为输入源"。 -->
+    <script>
+      (function () {
+        var OAK_CONFIG = {
+          enabled: true, // 总开关;false 时完全不 patch,行为等同普通摄像头
+          proxyPath: "/oak/cam1", // 同源反代路径,换成 "/oak/cam2" 切另一台相机
+          fps: 25, // 对齐 IMU_GPS/config.py 的 CAM_FPS
+          firstFrameTimeoutMs: 4000, // 首帧超时(ms),超时后回退真实摄像头
+          debug: true, // 是否在 console 打印 [OAK-bridge] 日志
+        };
+
+        if (!OAK_CONFIG.enabled) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+        var realGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
+          navigator.mediaDevices
+        );
+
+        function log() {
+          if (OAK_CONFIG.debug) {
+            console.log.apply(
+              console,
+              ["[OAK-bridge]"].concat(Array.prototype.slice.call(arguments))
+            );
+          }
+        }
+
+        function wantsVideo(constraints) {
+          return !!(constraints && constraints.video);
+        }
+
+        // 缓存已建好的流,避免用户反复点 Start/Stop 时重复创建 img/canvas/rAF 循环
+        var cachedStreamPromise = null;
+
+        function buildOakStream() {
+          return new Promise(function (resolve, reject) {
+            var img = new Image();
+            var canvas = document.createElement("canvas");
+            var ctx = canvas.getContext("2d");
+            var stopped = false;
+            var gotFirstFrame = false;
+            var rafId = null;
+            var timeoutId = null;
+
+            // 用 visibility:hidden 挪出视口,而不是 display:none——
+            // 部分浏览器会暂停 display:none 元素的图像解码/刷新
+            img.style.cssText =
+              "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;visibility:hidden;";
+            document.body.appendChild(img);
+
+            function cleanup() {
+              if (stopped) return;
+              stopped = true;
+              if (rafId) cancelAnimationFrame(rafId);
+              if (timeoutId) clearTimeout(timeoutId);
+              img.onerror = null;
+              img.src = "";
+              if (img.parentNode) img.parentNode.removeChild(img);
+            }
+
+            timeoutId = setTimeout(function () {
+              if (!gotFirstFrame) {
+                cleanup();
+                reject(
+                  new Error(
+                    "OAK first frame timeout after " +
+                      OAK_CONFIG.firstFrameTimeoutMs +
+                      "ms"
+                  )
+                );
+              }
+            }, OAK_CONFIG.firstFrameTimeoutMs);
+
+            img.onerror = function () {
+              if (!gotFirstFrame) {
+                cleanup();
+                reject(new Error("OAK MJPEG <img> failed to load (proxy/camera unreachable)"));
+              }
+            };
+
+            function drawLoop() {
+              if (stopped) return;
+              if (img.naturalWidth && img.naturalHeight) {
+                // canvas 尺寸跟随实际来源分辨率动态调整,避免写死导致变形
+                if (
+                  canvas.width !== img.naturalWidth ||
+                  canvas.height !== img.naturalHeight
+                ) {
+                  canvas.width = img.naturalWidth;
+                  canvas.height = img.naturalHeight;
+                  log("canvas resized to", canvas.width, canvas.height);
+                }
+                try {
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                } catch (e) {
+                  if (!gotFirstFrame) {
+                    cleanup();
+                    reject(e);
+                    return;
+                  }
+                }
+                if (!gotFirstFrame) {
+                  gotFirstFrame = true;
+                  clearTimeout(timeoutId);
+                  var stream = canvas.captureStream(OAK_CONFIG.fps);
+                  // 监听 track 的 'ended' 事件做清理,防止用户点 Stop 后
+                  // rAF 循环和 <img> 的网络连接在后台无限空跑
+                  var track = stream.getVideoTracks()[0];
+                  if (track) track.addEventListener("ended", cleanup);
+                  log(
+                    "OAK stream ready:",
+                    canvas.width + "x" + canvas.height
+                  );
+                  resolve(stream);
+                }
+              }
+              rafId = requestAnimationFrame(drawLoop);
+            }
+
+            rafId = requestAnimationFrame(drawLoop);
+            img.src = OAK_CONFIG.proxyPath + "?t=" + Date.now();
+          });
+        }
+
+        var patchedGetUserMedia = function (constraints) {
+          if (!wantsVideo(constraints)) {
+            log("audio-only request, passthrough to real getUserMedia");
+            return realGetUserMedia(constraints);
+          }
+          log("video request intercepted");
+          if (cachedStreamPromise) {
+            log("reusing cached OAK stream");
+            return cachedStreamPromise;
+          }
+          cachedStreamPromise = buildOakStream().catch(function (err) {
+            log("OAK bridge failed, falling back to real camera:", err.message);
+            cachedStreamPromise = null; // 失败不缓存,允许下次重试
+            return realGetUserMedia(constraints);
+          });
+          return cachedStreamPromise;
+        };
+        patchedGetUserMedia.__oakPatched = true;
+        navigator.mediaDevices.getUserMedia = patchedGetUserMedia;
+
+        log("getUserMedia video patch installed, proxyPath =", OAK_CONFIG.proxyPath);
+      })();
+    </script>
     <script src="./vendor/mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="./vendor/mediapipe/holistic/holistic.js"></script>
     <script src="./vendor/mediapipe/face_mesh/face_mesh.js"></script>
