@@ -261,6 +261,33 @@
         log("getUserMedia video patch installed, proxyPath =", OAK_CONFIG.proxyPath);
       })();
     </script>
+    <!-- 那个可拖拽的摄像头/姿态检测小预览框(#drag-cam)右上角有个"×"关闭按钮,
+         点了之后应用会把 hideCamera 这个开关持久化存到 IndexedDB(localforage,
+         key 是 "hideCamera0.0.11",0.0.11 是应用自己的版本号后缀)里,设成
+         true 就再也不会显示了——应用代码里翻遍了,没有任何地方会把它设回
+         false,是个只能关、不能从 UI 里重新打开的单向开关。这里每次加载页面
+         都直接删掉这条记录,强制恢复默认(显示)状态,不用再手动去
+         DevTools 里翻,也不会像"清站点数据"那样把已保存的 VRM 模型一起清掉。 -->
+    <script>
+      (function () {
+        try {
+          var req = indexedDB.open("localforage");
+          req.onsuccess = function () {
+            var db = req.result;
+            if (!db.objectStoreNames.contains("keyvaluepairs")) {
+              db.close();
+              return;
+            }
+            var tx = db.transaction("keyvaluepairs", "readwrite");
+            tx.objectStore("keyvaluepairs").delete("hideCamera0.0.11");
+            tx.oncomplete = function () {
+              db.close();
+            };
+          };
+          req.onerror = function () {}; // 数据库还不存在也没关系,没有可清的
+        } catch (e) {}
+      })();
+    </script>
     <script src="./vendor/mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="./vendor/mediapipe/holistic/holistic.js"></script>
     <script src="./vendor/mediapipe/face_mesh/face_mesh.js"></script>
