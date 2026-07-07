@@ -89,6 +89,40 @@
           return !!(constraints && constraints.video);
         }
 
+        // app 自己会调用 enumerateDevices() 来填充摄像头下拉列表,并且在
+        // videoinput 数组为空时直接读 videoinput[0].deviceId(没有做空数组
+        // 判断),会抛 "Cannot read properties of undefined"。因为我们的
+        // getUserMedia 补丁从没调用过真实的原生摄像头 API,浏览器永远不会
+        // 真正对这个 origin 授予摄像头权限,enumerateDevices() 就会一直
+        // 返回"未授权"状态下的空/无标签设备列表——这是我们这个补丁间接
+        // 导致的,不是原本就有的问题。补一个假的 OAK 设备条目进去,
+        // 避免应用这段没做防御判断的代码崩掉。
+        if (navigator.mediaDevices.enumerateDevices) {
+          var realEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(
+            navigator.mediaDevices
+          );
+          navigator.mediaDevices.enumerateDevices = function () {
+            return realEnumerateDevices().then(function (devices) {
+              var hasRealVideoInput = devices.some(function (d) {
+                return d.kind === "videoinput" && d.deviceId;
+              });
+              if (hasRealVideoInput) return devices;
+              log("no real videoinput device found, injecting fake OAK device entry");
+              return devices.concat([
+                {
+                  deviceId: "oak-camera",
+                  groupId: "oak-camera-group",
+                  kind: "videoinput",
+                  label: "OAK-D Camera (via proxy)",
+                  toJSON: function () {
+                    return this;
+                  },
+                },
+              ]);
+            });
+          };
+        }
+
         // 缓存已建好的流,避免用户反复点 Start/Stop 时重复创建 img/canvas/rAF 循环
         var cachedStreamPromise = null;
 
