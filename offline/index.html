@@ -162,16 +162,38 @@
                 if (!gotFirstFrame) {
                   gotFirstFrame = true;
                   clearTimeout(timeoutId);
-                  var stream = canvas.captureStream(OAK_CONFIG.fps);
-                  // 监听 track 的 'ended' 事件做清理,防止用户点 Stop 后
-                  // rAF 循环和 <img> 的网络连接在后台无限空跑
-                  var track = stream.getVideoTracks()[0];
-                  if (track) track.addEventListener("ended", cleanup);
-                  log(
-                    "OAK stream ready:",
-                    canvas.width + "x" + canvas.height
-                  );
-                  resolve(stream);
+                  // captureStream() 本身也可能抛(比如浏览器不支持),
+                  // 必须包 try/catch——否则抛出的异常会让这个 rAF 循环
+                  // 直接中断,Promise 既不 resolve 也不 reject,永远挂起,
+                  // "Start Face Tracking" 会卡住且没有任何报错。
+                  try {
+                    var stream = canvas.captureStream(OAK_CONFIG.fps);
+                    // 注意:MediaStreamTrack 规范里,消费方主动调用 track.stop()
+                    // 并不会触发 'ended' 事件(那个事件只在轨道因外部原因终止时才
+                    // 触发,比如设备被拔出)。app 点击"Stop"时就是直接调用
+                    // track.stop(),所以必须直接包一层 stop() 本身来做清理 +
+                    // 让 cachedStreamPromise 失效——否则下次点 Start 会拿到这条
+                    // 已经 stop() 过的死流,导致"再次开启没反应"。
+                    var track = stream.getVideoTracks()[0];
+                    if (track) {
+                      var realStop = track.stop.bind(track);
+                      track.stop = function () {
+                        realStop();
+                        cleanup();
+                        cachedStreamPromise = null;
+                        log("OAK track stopped, cache invalidated");
+                      };
+                    }
+                    log(
+                      "OAK stream ready:",
+                      canvas.width + "x" + canvas.height
+                    );
+                    resolve(stream);
+                  } catch (e) {
+                    cleanup();
+                    reject(e);
+                    return;
+                  }
                 }
               }
               rafId = requestAnimationFrame(drawLoop);
