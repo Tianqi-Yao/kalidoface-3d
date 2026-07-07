@@ -57,11 +57,12 @@ http://localhost:8899
 
 ### 前置条件
 
-- 能访问 OAK 相机所在的局域网(默认 IP 对齐 `IMU_GPS/config.py`:cam1 是
-  `10.95.76.11:8080`,cam2 是 `10.95.76.10:8081`,不在同一网络时用下面的命令行
-  参数覆盖)
 - `IMU_GPS/06_Camera/camera_bridge.py` 已经在运行,MJPEG 服务已监听(这一步在
   IMU_GPS 那一侧完成,不属于这个改造范围)
+- 默认假设 `camera_bridge.py` 和 kalidoface-3d 跑在**同一台机器**上(cam1 =
+  `localhost:8080`,cam2 = `localhost:8081`),方便本地联调。部署到机器人网络、
+  跨机器访问时用下面的命令行参数改成实际 IP(机器人上默认是
+  `IMU_GPS/config.py` 里的 `CAM1_IP=10.95.76.11` / `CAM2_IP=10.95.76.10`)
 
 ### 启动方式
 
@@ -72,14 +73,15 @@ cd offline
 python3 serve_with_oak_proxy.py --port 8899
 ```
 
-如果相机 IP/端口不是默认值,或者只有一台相机:
+跨机器访问机器人上的真实相机,或只有一台相机时:
 
 ```bash
-python3 serve_with_oak_proxy.py --port 8899 --cam1-ip 192.168.1.50 --no-cam2
+python3 serve_with_oak_proxy.py --port 8899 --cam1-ip 10.95.76.11 --no-cam2
 ```
 
 可用参数:`--port`、`--cam1-ip`、`--cam1-port`、`--cam2-ip`、`--cam2-port`、
-`--no-cam2`。
+`--no-cam2`(默认值:`cam1-ip`/`cam2-ip` 都是 `localhost`,`cam1-port` 是
+`8080`,`cam2-port` 是 `8081`)。
 
 ### 为什么需要一个反向代理
 
