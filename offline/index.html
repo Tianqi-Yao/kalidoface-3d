@@ -208,6 +208,50 @@
     <script type="module" crossorigin src="./assets/index.e2bec78d.js"></script>
     <link rel="modulepreload" href="./assets/vendor.832d142e.js">
     <link rel="stylesheet" href="./assets/index.1b91a8e8.css">
+    <!-- 让真实摄像头画面作为全屏背景显示在 3D 场景下面 -->
+    <!-- 新建独立的 <video>,同步 #user-cam(真实摄像头)的画面流,避免直接改动
+         应用自带的可拖拽小预览框(#drag-cam 由 interactjs 控制定位,直接改容易出问题) -->
+    <style>
+      #kf3d-camera-bg {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        z-index: 0;
+        transform: scaleX(-1);
+        pointer-events: none;
+        background: transparent;
+      }
+    </style>
+    <script>
+      (function () {
+        function setup() {
+          var src = document.getElementById("user-cam");
+          if (!src) {
+            setTimeout(setup, 200);
+            return;
+          }
+          var bg = document.createElement("video");
+          bg.id = "kf3d-camera-bg";
+          bg.autoplay = true;
+          bg.muted = true;
+          bg.playsInline = true;
+          document.body.insertBefore(bg, document.body.firstChild);
+          setInterval(function () {
+            if (src.srcObject && bg.srcObject !== src.srcObject) {
+              bg.srcObject = src.srcObject;
+              bg.play().catch(function () {});
+            }
+          }, 500);
+        }
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", setup);
+        } else {
+          setup();
+        }
+      })();
+    </script>
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
