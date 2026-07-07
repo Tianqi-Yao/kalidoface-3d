@@ -1,21 +1,21 @@
 @font-face {
   font-family: "Jelly";
   font-display: block;
-  src: url("https://yeemachine.github.io/k2021/font/kalidoface-jelly.ttf")
+  src: url("./fonts/kalidoface-jelly.ttf")
     format("truetype");
 }
 
 @font-face {
   font-family: "Kalicon";
   font-display: block;
-  src: url("https://yeemachine.github.io/k2021/font/kalidoface-regular.woff")
+  src: url("./fonts/kalidoface-regular.woff")
     format("woff");
 }
 
 @font-face {
   font-family: "Kalicon Variable";
   font-display: block;
-  src: url("https://yeemachine.github.io/k2021/font/kalidoface-variable.ttf")
+  src: url("./fonts/kalidoface-variable.ttf")
     format("truetype");
 }
 
